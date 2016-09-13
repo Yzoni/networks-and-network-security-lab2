@@ -7,7 +7,7 @@ import time
 
 
 class HttpServer:
-    def __init__(self, port=80, directory='public_html/'):
+    def __init__(self, port=80, directory=''):
         self.host = ''
         self.port = port
         self.directory = directory
@@ -25,50 +25,62 @@ class HttpServer:
                     request_method = string.split(' ')[0]
                     request_file = string.split(' ')[1]
 
+                    # Only accept GET requests
                     if request_method != 'GET':
                         self.return_501(c)
+
+                    # Default to index.html
+                    if (request_file == '/'):
+                        request_file = '/index.html'
+
+                    # Split URI and GET parameters
+                    request_uri, query_string = self.split_request(request_file)
+                    full_file_path = self.directory + request_uri
+                    static_file_path = self.directory + '/public_html' + request_uri
+
+                    # Check if file exists from root and from public_html
+                    if not os.path.isfile(full_file_path) and not os.path.isfile(static_file_path):
+                        self.return_404(c)
                     else:
-                        if re.match('/cgi-bin/.*', request_file):  # Dynamic
-                            request_uri, query_string = self.split_request(request_file)
+                        # Dynamic
+                        if re.match('/cgi-bin/.*', request_file):
                             self.return_200_dynamic(c, request_uri, query_string, addr, request_method)
-                        else:  # Static
-                            if (request_file == '/'):
-                                request_file = '/index.html'
-                            file_path = self.directory + '/public_html' + request_file
-                            if os.path.isfile(file_path):
-                                self.return_200_static(c, file_path)
-                            else:
-                                self.return_404(c)
+                        # Static
+                        else:
+                            self.return_200_static(c, static_file_path)
 
     def return_200_static(self, connection, file_path):
-        # TODO cleanup this function
         if mimetypes.guess_type(file_path)[0] == 'text/html':
-            with open(file_path, 'r') as f:
-                response_status = self._get_status_line(200)
-                response_headers = self._get_headers(file_path)
-                response_content = f.read()
-            response = str.encode(response_status) + str.encode(response_headers) + str.encode(response_content)
+            file_type = 'r'
         else:
-            with open(file_path, 'rb') as f:
-                response_status = self._get_status_line(200)
-                response_headers = self._get_headers(file_path)
-                response_content = f.read()
-            response = str.encode(response_status) + str.encode(response_headers) + response_content
+            file_type = 'rb'
 
+        with open(file_path, file_type) as f:
+            response_status = self._get_status_line(200)
+            response_headers = self._get_headers(file_path)
+
+            # Only encode when text/html
+            if file_type == 'r':
+                response_content = str.encode(f.read())
+            else:
+                response_content = f.read()
+
+        print('Serving file: ' + file_path)
+        response = str.encode(response_status) + str.encode(response_headers) + response_content
         return connection.send(response)
 
     def return_200_dynamic(self, connection, request_uri, query_string, address, request_method):
-        with subprocess.Popen(["python", self.directory + request_uri], stdout=subprocess.PIPE,
-                              env=dict(os.environ,
-                                       DOCUMENT_ROOT=self.directory + '/public_html',
-                                       REQUEST_METHOD=request_method,
-                                       REQUEST_URI=request_uri,
-                                       QUERY_STRING=str(self.split_query_string(query_string)),
-                                       REMOTE_ADDR=address[0])) as proc:
-            response_status = self._get_status_line(200)
-            response_headers = self._get_headers()
-            response_content = proc.stdout.read()
-            response = response_status + response_headers + response_content.decode()
+        proc = subprocess.Popen(["python", self.directory + request_uri], stdout=subprocess.PIPE,
+                                env=dict(os.environ,
+                                         DOCUMENT_ROOT=self.directory + '/public_html',
+                                         REQUEST_METHOD=request_method,
+                                         REQUEST_URI=request_uri,
+                                         QUERY_STRING=str(self.split_query_string(query_string)),
+                                         REMOTE_ADDR=address[0]))
+        response_status = self._get_status_line(200)
+        response_headers = self._get_headers()
+        response_content = proc.stdout.read()
+        response = response_status + response_headers + response_content.decode()
         return connection.send(response.encode())
 
     def split_request(self, request):

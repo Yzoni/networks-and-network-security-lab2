@@ -121,10 +121,9 @@ class HttpServer:
             return 'HTTP/1.1 501 Not Implemented\n'
 
     def _get_headers(self, file_path=None):
-        h = ''
         current_date = time.strftime("%a, %d %b %Y %H:%M:%S", time.localtime())
-        h += 'Date: ' + current_date + '\n'
-        h += 'Server: HTTP-Socket-Server\n'
+        h = 'Date: ' + current_date + '\n'
+        h += 'Server: Python-Socket-Server\n'
         if file_path:
             mime = mimetypes.MimeTypes().guess_type(file_path)[0]
             h += 'Content-Type: ' + mime + '\n'

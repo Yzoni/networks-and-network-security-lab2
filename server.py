@@ -13,6 +13,10 @@ class HttpServer:
         self.directory = directory
 
     def start(self):
+        """
+        Main launch function
+        :return:
+        """
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.bind((self.host, self.port))
             s.listen(3)
@@ -50,14 +54,20 @@ class HttpServer:
                             self.return_200_static(c, static_file_path)
 
     def return_200_static(self, connection, file_path):
+        """
+        Handles static pages
+        :param connection: instance of accepted connection
+        :param file_path: path to the static file
+        :return:
+        """
         if mimetypes.guess_type(file_path)[0] == 'text/html':
             file_type = 'r'
         else:
             file_type = 'rb'
 
         with open(file_path, file_type) as f:
-            response_status = self._get_status_line(200)
-            response_headers = self._get_headers(file_path)
+            response_status = self.get_status_line(200)
+            response_headers = self.get_headers(file_path)
 
             # Only encode when text/html
             if file_type == 'r':
@@ -70,6 +80,15 @@ class HttpServer:
         return connection.send(response)
 
     def return_200_dynamic(self, connection, request_uri, query_string, address, request_method):
+        """
+        Handles dynamic pages from cgi-bin
+        :param connection: instance of accepted connection
+        :param request_uri: file uri
+        :param query_string: GET options
+        :param address: incoming remote address
+        :param request_method: the type of request
+        :return:
+        """
         proc = subprocess.Popen(["python", self.directory + request_uri], stdout=subprocess.PIPE,
                                 env=dict(os.environ,
                                          DOCUMENT_ROOT=self.directory + '/public_html',
@@ -77,13 +96,19 @@ class HttpServer:
                                          REQUEST_URI=request_uri,
                                          QUERY_STRING=str(self.split_query_string(query_string)),
                                          REMOTE_ADDR=address[0]))
-        response_status = self._get_status_line(200)
-        response_headers = self._get_headers()
+        response_status = self.get_status_line(200)
+        response_headers = self.get_headers()
         response_content = proc.stdout.read()
         response = response_status + response_headers + response_content.decode()
         return connection.send(response.encode())
 
-    def split_request(self, request):
+    @staticmethod
+    def split_request(request):
+        """
+        Splits the request in uri and query GET options
+        :param request: the request url
+        :return: string of uri, string of queries
+        """
         query_string = ''
         if '?' in request:
             request_uri, query_string = request.split('?', 1)
@@ -91,28 +116,52 @@ class HttpServer:
             request_uri = request
         return request_uri, query_string
 
-    def split_query_string(self, query_string):
+    @staticmethod
+    def split_query_string(query_string):
+        """
+        Converts a query string to dict format
+        :param query_string:
+        :return:
+        """
         try:
+            # Split queries
             splitted = query_string.split('&')
+            # Create key=value in dict from queries
             return dict(map(str, x.split('=')) for x in splitted)
         except:
-            print('Invalid query string')
+            print('Could not convert query string')
 
     def return_501(self, connection):
-        response_status = self._get_status_line(501)
-        response_headers = self._get_headers()
-        response_content = self._get_status_line(501)
+        """
+        Returns a 501 page response
+        :param connection: instance of accepted connection
+        :return:
+        """
+        response_status = self.get_status_line(501)
+        response_headers = self.get_headers()
+        response_content = self.get_status_line(501)
         response = response_status + response_headers + response_content
         return connection.send(response.encode())
 
     def return_404(self, connection):
-        response_status = self._get_status_line(404)
-        response_headers = self._get_headers()
-        response_content = self._get_status_line(404)
+        """
+        Returns a 404 page response
+        :param connection: instance of accepted connection
+        :return:
+        """
+        response_status = self.get_status_line(404)
+        response_headers = self.get_headers()
+        response_content = self.get_status_line(404)
         response = response_status + response_headers + response_content
         return connection.send(response.encode())
 
-    def _get_status_line(self, code):
+    @staticmethod
+    def get_status_line(code):
+        """
+        Get the full response code based on index
+        :param code: code index
+        :return: string response code
+        """
         if code == 200:
             return 'HTTP/1.1 200 OK\n'
         elif code == 404:
@@ -120,7 +169,13 @@ class HttpServer:
         elif code == 501:
             return 'HTTP/1.1 501 Not Implemented\n'
 
-    def _get_headers(self, file_path=None):
+    @staticmethod
+    def get_headers(file_path=None):
+        """
+        Generates the headers
+        :param file_path:
+        :return: str headers
+        """
         current_date = time.strftime("%a, %d %b %Y %H:%M:%S", time.localtime())
         h = 'Date: ' + current_date + '\n'
         h += 'Server: Python-Socket-Server\n'

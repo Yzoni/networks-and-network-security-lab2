@@ -7,8 +7,7 @@ import time
 
 
 class HttpServer:
-    def __init__(self, port=80, directory=''):
-        self.host = ''
+    def __init__(self, port=80, directory=os.path.dirname(os.path.realpath(__file__))):
         self.port = port
         self.directory = directory
 
@@ -18,40 +17,45 @@ class HttpServer:
         :return:
         """
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.bind((self.host, self.port))
-            s.listen(3)
-            while True:
-                s.listen(5)
-                connection, addr = s.accept()
-                with connection as c:
-                    data = c.recv(1024)
-                    string = bytes.decode(data)
-                    request_method = string.split(' ')[0]
-                    request_file = string.split(' ')[1]
+            s.bind(('', self.port))
+            s.listen(5)
+            try:
+                print('Server started listening on port ' + str(self.port))
+                while True:
+                    connection, addr = s.accept()
+                    with connection as c:
+                        data = c.recv(1024)
+                        string = bytes.decode(data)
+                        request_method = string.split(' ')[0]
+                        request_file = string.split(' ')[1]
 
-                    # Only accept GET requests
-                    if request_method != 'GET':
-                        self.return_501(c)
+                        # Only accept GET requests
+                        if request_method != 'GET':
+                            self.return_501(c)
+                            continue
 
-                    # Default to index.html
-                    if (request_file == '/'):
-                        request_file = '/index.html'
+                        # Default to index.html
+                        if (request_file == '/'):
+                            request_file = '/index.html'
 
-                    # Split URI and GET parameters
-                    request_uri, query_string = self.split_request(request_file)
-                    full_file_path = self.directory + request_uri
-                    static_file_path = self.directory + '/public_html' + request_uri
+                        # Split URI and GET parameters
+                        request_uri, query_string = self.split_request(request_file)
+                        full_file_path = self.directory + request_uri
+                        static_file_path = self.directory + '/public_html' + request_uri
 
-                    # Check if file exists from root and from public_html
-                    if not os.path.isfile(full_file_path) and not os.path.isfile(static_file_path):
-                        self.return_404(c)
-                    else:
-                        # Dynamic
-                        if re.match('/cgi-bin/.*', request_file):
-                            self.return_200_dynamic(c, request_uri, query_string, addr, request_method)
-                        # Static
+                        # Check if file exists from root and from public_html
+                        if not os.path.isfile(full_file_path) and not os.path.isfile(static_file_path):
+                            self.return_404(c)
                         else:
-                            self.return_200_static(c, static_file_path)
+                            # Dynamic
+                            if re.match('/cgi-bin/.*', request_file):
+                                self.return_200_dynamic(c, request_uri, query_string, addr, request_method)
+                            # Static
+                            else:
+                                self.return_200_static(c, static_file_path)
+            except KeyboardInterrupt:
+                print("Stopped the server.")
+                pass
 
     def return_200_static(self, connection, file_path):
         """
@@ -89,7 +93,8 @@ class HttpServer:
         :param request_method: the type of request
         :return:
         """
-        proc = subprocess.Popen(["python", self.directory + request_uri], stdout=subprocess.PIPE,
+        file_path = self.directory + request_uri
+        proc = subprocess.Popen(["python", file_path], stdout=subprocess.PIPE,
                                 env=dict(os.environ,
                                          DOCUMENT_ROOT=self.directory + '/public_html',
                                          REQUEST_METHOD=request_method,
@@ -99,6 +104,8 @@ class HttpServer:
         response_status = self.get_status_line(200)
         response_headers = self.get_headers()
         response_content = proc.stdout.read()
+
+        print('Serving file: ' + file_path)
         response = response_status + response_headers + response_content.decode()
         return connection.send(response.encode())
 
@@ -123,6 +130,8 @@ class HttpServer:
         :param query_string:
         :return:
         """
+        if query_string == '':
+            return None
         try:
             # Split queries
             splitted = query_string.split('&')
@@ -130,6 +139,7 @@ class HttpServer:
             return dict(map(str, x.split('=')) for x in splitted)
         except:
             print('Could not convert query string')
+            return None
 
     def return_501(self, connection):
         """
@@ -189,6 +199,5 @@ class HttpServer:
 
 
 if __name__ == '__main__':
-    http_server = HttpServer(port=8081,
-                             directory='/home/yorick/IdeaProjects/computer-networks-http-server')
+    http_server = HttpServer(port=8080)
     http_server.start()
